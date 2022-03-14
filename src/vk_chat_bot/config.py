@@ -2,7 +2,7 @@
 SECRET_KEY_VK_APP = ''
 URL_Oauth = ''
 REDIRECT_URI = ''
-APP_ID = 0000
+APP_ID = 8101833
 
 # Database Connect (First Go to the db/database and create db ex. "Base.metadata.create_all(dc.get_engine)")
 USERNAME = ''

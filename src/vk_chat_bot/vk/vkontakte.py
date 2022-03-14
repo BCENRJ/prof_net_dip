@@ -13,7 +13,8 @@ class VKinderUser:
         necessary_fields = ['bdate,city,sex,relation']
         user_info = self.vk_api.users.get(fields=necessary_fields)[0]
         result = {'id': user_info['id'], 'firstname': user_info['first_name'], 'lastname': user_info['last_name'],
-                  'dob': user_info.get('bdate', None), 'gender': user_info['sex'], 'city': user_info.get('city', None),
+                  'dob': user_info.get('bdate', None), 'gender': user_info['sex'],
+                  'city': user_info.get('city', {}).get('id'),
                   'relation': user_info['relation']}
         return result
 

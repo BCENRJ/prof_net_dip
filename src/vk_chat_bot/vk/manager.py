@@ -112,6 +112,7 @@ class VKGroupManage:
             user['relation'] = self._ask_relation(u_id)
         self.user_app.add_user(vk_id=user['id'], firstname=user['firstname'], lastname=user['lastname'],
                                dob=user['dob'], gender=user['gender'], city=user['city'], relation=user['relation'])
+        self._send_msg(u_id, '🐼 будем знакомы\n напишите -> "поиск" или "search" для дальнейшей работы с ботом')
         return True
 
     def _ask_dob(self, u_id):

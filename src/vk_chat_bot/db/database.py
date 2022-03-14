@@ -38,6 +38,7 @@ class VKinderUserToken(Base):
     id = sq.Column('id', sq.Integer, primary_key=True)
     vk_usr_id = sq.Column('vk_usr_id', sq.BigInteger)
     access_token = sq.Column('access_token', sq.String(300))
+    step = sq.Column('step', sq.Integer)
 
 
 class VKinderUsers(Base):
@@ -137,7 +138,7 @@ class UserAppToken:
 
     def add_user(self, vk_id: int, access_token: str):
         if self.check_user(vk_id) is False:
-            new_user = VKinderUserToken(vk_usr_id=vk_id, access_token=access_token)
+            new_user = VKinderUserToken(vk_usr_id=vk_id, access_token=access_token, step=0)
             self.session.add(new_user)
             self.session.commit()
 
@@ -154,6 +155,17 @@ class UserAppToken:
         print('Requested VKinder user does not exist.')
         return None
 
+    def get_step(self, vk_id: int):
+        if self.check_user(vk_id):
+            user = self.session.query(VKinderUserToken).filter(VKinderUserToken.vk_usr_id == vk_id).first()
+            return user.step
+        print('Requested VKinder user does not exist.')
+        return None
+
+    def update_step(self, vk_id: int, step_n: int):
+        if self.check_user(vk_id) and step_n in range(1, 2):
+            self.session.query(VKinderUserToken).filter(VKinderUserToken.vk_usr_id == vk_id).update({'step': step_n})
+            self.session.commit()
 
 
 class UserApp:
@@ -464,6 +476,6 @@ session = dc.get_session
 
 
 if __name__ == '__main__':
-    Base.metadata.create_all(dc.get_engine)
-    # Base.metadata.drop_all(dc.get_engine)
+    # Base.metadata.create_all(dc.get_engine)
+    Base.metadata.drop_all(dc.get_engine)
     pass
