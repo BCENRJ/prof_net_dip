@@ -39,6 +39,7 @@ class VKinderUserToken(Base):
     vk_usr_id = sq.Column('vk_usr_id', sq.BigInteger)
     access_token = sq.Column('access_token', sq.String(300))
     step = sq.Column('step', sq.Integer)
+    last_searched_id = sq.Column('last_searched', sq.BigInteger, default=None)
 
 
 class VKinderUsers(Base):
@@ -166,6 +167,19 @@ class UserAppToken:
         if self.check_user(vk_id) and step_n in range(1, 2):
             self.session.query(VKinderUserToken).filter(VKinderUserToken.vk_usr_id == vk_id).update({'step': step_n})
             self.session.commit()
+
+    def update_last_searched(self, vk_id: int, last_id: int or None):
+        if self.check_user(vk_id):
+            self.session.query(VKinderUserToken).filter(VKinderUserToken.vk_usr_id == vk_id).\
+                update({'last_searched_id': last_id})
+            self.session.commit()
+
+    def get_last_searched_id(self, vk_id: int):
+        if self.check_user(vk_id):
+            user = self.session.query(VKinderUserToken).filter(VKinderUserToken.vk_usr_id == vk_id).first()
+            return user.last_searched_id
+        print('Requested VKinder user does not exist.')
+        return None
 
 
 class UserApp:
@@ -476,6 +490,6 @@ session = dc.get_session
 
 
 if __name__ == '__main__':
-    # Base.metadata.create_all(dc.get_engine)
-    Base.metadata.drop_all(dc.get_engine)
+    Base.metadata.create_all(dc.get_engine)
+    # Base.metadata.drop_all(dc.get_engine)
     pass

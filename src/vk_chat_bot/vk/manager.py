@@ -4,11 +4,13 @@ import flag
 from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 from vk_api.utils import get_random_id
-from src.vk_chat_bot.db.database import UserAppToken, UserApp, session
-from src.vk_chat_bot.vk.vkontakte import VKinderUser
+from src.vk_chat_bot.db.database import UserAppToken, UserSearchList, UserApp, session
+from src.vk_chat_bot.vk.vkontakte import SearchEngine, VKinderUser, VkUserCook
 
 
 class VKGroupManage:
+    COMMANDS = {'start', 'начать', 'search', 'поиск', 'next', 'следующий', 'доб. в избранное', 'доб. в чс'}
+
     def __init__(self, vk_group_token, group_id, oauth_link):
         self.vk = vk_api.VkApi(token=vk_group_token)
         self.long_poll = VkBotLongPoll(self.vk, group_id=group_id)
@@ -17,6 +19,35 @@ class VKGroupManage:
         self.user_app = UserApp(session)
         self.oauth_link = oauth_link
         self.u_vk_api = None
+
+    def _search_or_next(self, user_id, user_token, user_firstname):
+        usr_search = UserSearchList(user_id, session)
+        v_usr_cook = VkUserCook(user_token)
+        s_engine = SearchEngine(user_id, user_token)
+        random_id = self._generate_user(user_id, user_firstname, usr_search, v_usr_cook, s_engine)
+        get_id = self.userapp_token.get_last_searched_id(user_id)
+        if get_id is not None:
+            usr_search.move_user_to_archive(get_id)
+            self.userapp_token.update_last_searched(user_id, random_id)
+        else:
+            self.userapp_token.update_last_searched(user_id, random_id)
+        self._ask_to_move_msg(user_id)
+
+    def _move_to_fav(self, user_id):
+        usr_search = UserSearchList(user_id, session)
+        get_id = self.userapp_token.get_last_searched_id(user_id)
+        if user_id is not None:
+            usr_search.move_user_to_favourite(get_id)
+            self.userapp_token.update_last_searched(user_id, None)
+        self._ask_to_move_msg(user_id)
+
+    def _move_to_black(self, user_id):
+        usr_search = UserSearchList(user_id, session)
+        get_id = self.userapp_token.get_last_searched_id(user_id)
+        if user_id is not None:
+            usr_search.move_user_to_black(get_id)
+            self.userapp_token.update_last_searched(user_id, None)
+        self._ask_to_move_msg(user_id)
 
     def _get_firstname(self, user_id):
         return self.vk_api.users.get(user_ids=user_id)[0]['first_name']
@@ -57,6 +88,12 @@ class VKGroupManage:
         self.vk_api.messages.send(peer_id=peer_id, message=message, keyboard=keyboard.get_keyboard(),
                                   random_id=get_random_id())
 
+    def _unknown_command(self, peer_id, txt_msg) -> None:
+        message = f"неизвестная команда '{txt_msg}' доступные команды 👇"
+        self.vk_api.messages.send(peer_id=peer_id, message=message, keyboard=None,
+                                  random_id=get_random_id())
+        self._send_msg(peer_id, '\n'.join(i for i in VKGroupManage.COMMANDS))
+
     def _ask_relation_msg(self, peer_id):
         message = ('Ваше семейное положение? Отправьте цифру от 1 - 8\n\n1 - не женат/не замужем\n'
                    '2 - есть друг/есть подруга\n3 - помолвлен/помолвлена\n4 - женат/замужем\n5 - всё сложно\n'
@@ -72,16 +109,14 @@ class VKGroupManage:
         self.vk_api.messages.send(peer_id=peer_id, message=message, keyboard=keyboard.get_keyboard(),
                                   random_id=get_random_id())
 
-    def _ask_to_move_msg(self, peer_id, message) -> None:
-        keyboard = VkKeyboard(one_time=False)
+    def _ask_to_move_msg(self, peer_id) -> None:
+        keyboard = VkKeyboard(one_time=True)
         keyboard.add_button('следующий', color=VkKeyboardColor.SECONDARY)
         keyboard.add_line()
         keyboard.add_button('доб. в избранное', color=VkKeyboardColor.POSITIVE)
         keyboard.add_line()
         keyboard.add_button('доб. в чс', color=VkKeyboardColor.NEGATIVE)
-        keyboard.add_line()
-        keyboard.add_button('выход', color=VkKeyboardColor.SECONDARY)
-        self.vk_api.messages.send(peer_id=peer_id, message=message, keyboard=keyboard.get_keyboard(),
+        self.vk_api.messages.send(peer_id=peer_id, message='🐼🥰', keyboard=keyboard.get_keyboard(),
                                   random_id=get_random_id())
 
     def _acquaintance(self, u_id, firstname):
@@ -199,38 +234,6 @@ class VKGroupManage:
                     self._send_msg(u_id, 'Семейное положение указан неверно')
                     return self._ask_relation(u_id)
 
-    def _ask_to_search(self, u_id, usr_name):
-        self._ask_to_search_msg(u_id, f'{usr_name}, 🐼 перейдем к поиску?')
-        for further_event in self.long_poll.listen():
-            if further_event.type == VkBotEventType.MESSAGE_NEW:
-                if u_id == further_event.obj['message']['peer_id']:
-                    answer = further_event.obj['message']['text']
-                    if answer.lower() == 'да':
-                        self._send_msg(u_id, 'Идет поиск...')
-                        return True
-                    elif answer.lower() == 'нет':
-                        self._send_bye(u_id, usr_name)
-                        return False
-                    self._send_msg(u_id, 'Неверная команда')
-                    return self._ask_to_search(u_id, usr_name)
-
-    def _ask_to_move(self, u_id):
-        self._ask_to_move_msg(u_id, '🐼🥰')
-        for further_event in self.long_poll.listen():
-            if further_event.type == VkBotEventType.MESSAGE_NEW:
-                if u_id == further_event.obj['message']['peer_id']:
-                    answer = further_event.obj['message']['text']
-                    if answer.lower() == 'следующий':
-                        return 1
-                    elif answer.lower() == 'доб. в избранное':
-                        return 2
-                    elif answer.lower() == 'доб. в чс':
-                        return 3
-                    elif answer.lower() == 'выход':
-                        return 4
-                    self._send_msg(u_id, 'Неверная команда')
-                    return self._ask_to_move(u_id)
-
     def _generate_user(self, u_id, name, usr_search_list, usr_cook, search_engine):
         if usr_search_list.check_users_existence() is None:
             self._send_msg(u_id, f'{name}, ищем потенциально '
@@ -241,7 +244,6 @@ class VKGroupManage:
         if usr_search_list.check_users_existence() is None:
             self._send_msg(u_id, f'{name}, подходящих пользователей не найдено... вернитесь чуть позже😓')
             return None
-
         r_usr = usr_search_list.select_random_row()
         attach = usr_cook.get_user_photos(r_usr.vk_usr_id)
         if len(attach) != 3:
