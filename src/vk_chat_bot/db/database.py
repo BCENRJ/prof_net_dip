@@ -208,6 +208,18 @@ class UserApp:
         print('Requested VKinder user does not exist.')
         return None
 
+    def update(self, vk_id: int, value, what_to_update: str):
+        if self.check_user(vk_id):
+            if what_to_update.lower() == 'dob' and type(value) == str:
+                self.session.query(VKinderUsers).filter(VKinderUsers.vk_usr_id == vk_id).update({'dob': value})
+            if what_to_update.lower() == 'city' and type(value) == int:
+                self.session.query(VKinderUsers).filter(VKinderUsers.vk_usr_id == vk_id).update({'city': value})
+            if what_to_update.lower() == 'gender' and type(value) == int:
+                self.session.query(VKinderUsers).filter(VKinderUsers.vk_usr_id == vk_id).update({'gender': value})
+            if what_to_update.lower() == 'relation' and type(value) == int:
+                self.session.query(VKinderUsers).filter(VKinderUsers.vk_usr_id == vk_id).update({'relation': value})
+        self.session.commit()
+
 
 class UserSearchList:
     def __init__(self, app_user_vk_id: int, get_session) -> None:

@@ -1,7 +1,7 @@
 import vk_api
 import datetime as dt
 import flag
-from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
+from vk_api.bot_longpoll import VkBotLongPoll
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 from vk_api.utils import get_random_id
 from src.vk_chat_bot.db.database import UserAppToken, UserSearchList, UserApp, session
@@ -9,7 +9,8 @@ from src.vk_chat_bot.vk.vkontakte import SearchEngine, VKinderUser, VkUserCook
 
 
 class VKGroupManage:
-    COMMANDS = {'start', 'начать', 'search', 'поиск', 'next', 'следующий', 'доб. в избранное', 'доб. в чс'}
+    COMMANDS = {'start', 'начать', 'search', 'поиск', 'next', 'следующий', 'доб. в избранное', 'доб. в чс',
+                'ну...давай позже 😔', 'а давай познакомимся 🐼'}
 
     def __init__(self, vk_group_token, group_id, oauth_link):
         self.vk = vk_api.VkApi(token=vk_group_token)
@@ -20,7 +21,10 @@ class VKGroupManage:
         self.oauth_link = oauth_link
         self.u_vk_api = None
 
-    def _search_or_next(self, user_id, user_token, user_firstname):
+    def _get_firstname(self, user_id):
+        return self.vk_api.users.get(user_ids=user_id)[0]['first_name']
+
+    def _search_or_next(self, user_id, user_token, user_firstname) -> None:
         usr_search = UserSearchList(user_id, session)
         v_usr_cook = VkUserCook(user_token)
         s_engine = SearchEngine(user_id, user_token)
@@ -33,7 +37,7 @@ class VKGroupManage:
             self.userapp_token.update_last_searched(user_id, random_id)
         self._ask_to_move_msg(user_id)
 
-    def _move_to_fav(self, user_id):
+    def _move_to_fav(self, user_id) -> None:
         usr_search = UserSearchList(user_id, session)
         get_id = self.userapp_token.get_last_searched_id(user_id)
         if user_id is not None:
@@ -41,16 +45,13 @@ class VKGroupManage:
             self.userapp_token.update_last_searched(user_id, None)
         self._ask_to_move_msg(user_id)
 
-    def _move_to_black(self, user_id):
+    def _move_to_black(self, user_id) -> None:
         usr_search = UserSearchList(user_id, session)
         get_id = self.userapp_token.get_last_searched_id(user_id)
         if user_id is not None:
             usr_search.move_user_to_black(get_id)
             self.userapp_token.update_last_searched(user_id, None)
         self._ask_to_move_msg(user_id)
-
-    def _get_firstname(self, user_id):
-        return self.vk_api.users.get(user_ids=user_id)[0]['first_name']
 
     # Messaging
     def _send_msg(self, peer_id, message) -> None:
@@ -66,9 +67,11 @@ class VKGroupManage:
         self.vk_api.messages.send(peer_id=peer_id, message=message, keyboard=keyboard.get_keyboard(),
                                   random_id=get_random_id())
 
-    def _send_msg_signed_in(self, peer_id, message) -> None:
+    def _send_msg_signed_in(self, peer_id, firstname) -> None:
+        message = f'{firstname}, мы все еще не знакомы... давай познакомимся? 🐼\n' \
+                  f'(нужно познакомится с пандой, чтобы перейти к поиску)'
         keyboard = VkKeyboard(one_time=True)
-        keyboard.add_button('а давай познакомимся 🐼 ', color=VkKeyboardColor.POSITIVE)
+        keyboard.add_button('а давай познакомимся 🐼', color=VkKeyboardColor.POSITIVE)
         keyboard.add_line()
         keyboard.add_button('ну...давай позже 😔', color=VkKeyboardColor.NEGATIVE)
         self.vk_api.messages.send(peer_id=peer_id, message=message, keyboard=keyboard.get_keyboard(),
@@ -81,32 +84,18 @@ class VKGroupManage:
         self.vk_api.messages.send(peer_id=peer_id, message=message, keyboard=keyboard.get_keyboard(),
                                   random_id=get_random_id())
 
-    def _ask_gender_msg(self, peer_id, message) -> None:
-        keyboard = VkKeyboard(one_time=True)
-        keyboard.add_button('девушка', color=VkKeyboardColor.SECONDARY)
-        keyboard.add_button('парень', color=VkKeyboardColor.SECONDARY)
-        self.vk_api.messages.send(peer_id=peer_id, message=message, keyboard=keyboard.get_keyboard(),
-                                  random_id=get_random_id())
-
     def _unknown_command(self, peer_id, txt_msg) -> None:
-        message = f"неизвестная команда '{txt_msg}' доступные команды 👇"
-        self.vk_api.messages.send(peer_id=peer_id, message=message, keyboard=None,
-                                  random_id=get_random_id())
-        self._send_msg(peer_id, '\n'.join(i for i in VKGroupManage.COMMANDS))
-
-    def _ask_relation_msg(self, peer_id):
-        message = ('Ваше семейное положение? Отправьте цифру от 1 - 8\n\n1 - не женат/не замужем\n'
-                   '2 - есть друг/есть подруга\n3 - помолвлен/помолвлена\n4 - женат/замужем\n5 - всё сложно\n'
-                   '6 - в активном поиске\n7 - влюблён/влюблена\n8 - в гражданском браке')
-
-        self.vk_api.messages.send(peer_id=peer_id, message=message, keyboard=None,
-                                  random_id=get_random_id())
-
-    def _ask_to_search_msg(self, peer_id, message) -> None:
-        keyboard = VkKeyboard(one_time=True)
-        keyboard.add_button('да', color=VkKeyboardColor.SECONDARY)
-        keyboard.add_button('нет', color=VkKeyboardColor.SECONDARY)
+        message = f"неизвестная команда '{txt_msg}' 😞\nнапишите -> start"
+        keyboard = VkKeyboard(one_time=False)
+        keyboard.add_button('start', color=VkKeyboardColor.SECONDARY)
         self.vk_api.messages.send(peer_id=peer_id, message=message, keyboard=keyboard.get_keyboard(),
+                                  random_id=get_random_id())
+
+    def _ask_relation_msg(self, peer_id) -> None:
+        message = ('Ваше семейное положение? Отправьте "/re" и цифру от 1 - 8\n\n1 - не женат/не замужем\n'
+                   '2 - есть друг/есть подруга\n3 - помолвлен/помолвлена\n4 - женат/замужем\n5 - всё сложно\n'
+                   '6 - в активном поиске\n7 - влюблён/влюблена\n8 - в гражданском браке\n\nпр. "/re 6"')
+        self.vk_api.messages.send(peer_id=peer_id, message=message, keyboard=None,
                                   random_id=get_random_id())
 
     def _ask_to_move_msg(self, peer_id) -> None:
@@ -116,123 +105,85 @@ class VKGroupManage:
         keyboard.add_button('доб. в избранное', color=VkKeyboardColor.POSITIVE)
         keyboard.add_line()
         keyboard.add_button('доб. в чс', color=VkKeyboardColor.NEGATIVE)
-        self.vk_api.messages.send(peer_id=peer_id, message='🐼🥰', keyboard=keyboard.get_keyboard(),
+        self.vk_api.messages.send(peer_id=peer_id, message='✔️', keyboard=keyboard.get_keyboard(),
                                   random_id=get_random_id())
 
-    def _acquaintance(self, u_id, firstname):
-        self._send_msg_signed_in(u_id, f'{firstname}, мы все еще не знакомы... давай познакомимся? 🐼\n'
-                                       f'(нужно познакомится с пандой, чтобы перейти к поиску)')
-        for further_event in self.long_poll.listen():
-            if further_event.type == VkBotEventType.MESSAGE_NEW:
-                if u_id == further_event.obj['message']['peer_id']:
-                    answer = further_event.obj['message']['text']
-                    if answer == 'ну...давай позже 😔':
-                        self._send_bye(u_id, firstname)
-                        return False
-                    elif answer == 'а давай познакомимся 🐼':
-                        return True
-                    else:
-                        self._send_msg(u_id, 'Не очень вас понимаю...')
-                        return self._acquaintance(u_id, firstname)
-
-    def _get_acquainted(self, u_id, u_token):
+    def _get_acquaintance(self, u_token):
         user = VKinderUser(u_token).get_info()
         if user['dob'] is None or len(user['dob'].split('.')) != 3 or not 1942 <= int(user['dob'].split('.')[2]) < 2014:
-            user['dob'] = self._ask_dob(u_id)
-        if user['city'] is None:
-            user['city'] = self._ask_city(u_id)
+            user['dob'] = None
         if user['gender'] == 0:
-            user['gender'] = self._ask_gender(u_id)
+            user['gender'] = None
         if user['relation'] == 0:
-            user['relation'] = self._ask_relation(u_id)
+            user['relation'] = None
         self.user_app.add_user(vk_id=user['id'], firstname=user['firstname'], lastname=user['lastname'],
                                dob=user['dob'], gender=user['gender'], city=user['city'], relation=user['relation'])
-        self._send_msg(u_id, '🐼 будем знакомы\n напишите -> "поиск" или "search" для дальнейшей работы с ботом')
         return True
 
-    def _ask_dob(self, u_id):
-        self._send_msg(u_id, 'Напиште дату рождения в формате: -> D.M.YYYY (от 9 до 80 лет допускается) ')
-        for further_event in self.long_poll.listen():
-            if further_event.type == VkBotEventType.MESSAGE_NEW:
-                if u_id == further_event.obj['message']['peer_id']:
-                    answer = further_event.obj['message']['text'].strip()
-                    if '.' in answer:
-                        num = answer.split('.')
-                        if len(num) == 3:
-                            d, m, y = num[0], num[1], num[2]
-                            if d.isdigit() and m.isdigit() and y.isdigit():
-                                if 1 <= int(d) <= 31 and 1 <= int(m) <= 12 and 1942 <= int(y) <= 2013:
-                                    return answer
-                    self._send_msg(u_id, 'Дата указана неверено')
-                    return self._ask_dob(u_id)
+    def _check_new_usr_info(self, u_id):
+        usr = self.user_app.get_user(u_id)
+        usr_info = {'dob': usr.dob, 'city': usr.city, 'gender': usr.gender, 'relation': usr.relation}
+        if usr_info['dob'] is None:
+            self._send_msg(u_id, 'Напишите дату рождения в формате: -> /dob D.M.YYYY (от 9 до 80 лет допускается)'
+                                 '\nпр. "/dob 15.7.1990" ')
+            return False
+        if usr_info['city'] is None:
+            self._send_msg(u_id, 'Откуда вы? в формате => (RU,UA,BY,UZ) или (🇷🇺🇺🇦🇧🇾🇺🇿) и напишите город'
+                                 '\nпр. "/from 🇺🇦 Киев" или "/from 🇷🇺 Москва" или "/from BY Минск"')
+            return False
+        if usr_info['gender'] is None:
+            self._send_msg(u_id, 'Ваш пол?\n пр. "/gender 1" -> девушка, "/gender 2" -> парень')
+            return False
+        if usr_info['relation'] is None:
+            self._ask_relation_msg(u_id)
+            return False
+        self._ask_to_move_msg(u_id)
+        return True
 
-    def _get_city_id(self, u_id, c_id):
-        self._send_msg(u_id, 'а из какого вы города?\nесли страна выбрана неверено то отправьте => "q" в ответ')
-        for further_event in self.long_poll.listen():
-            if further_event.type == VkBotEventType.MESSAGE_NEW:
-                if u_id == further_event.obj['message']['peer_id']:
-                    answer = further_event.obj['message']['text']
-                    if answer.lower() == 'q':
-                        self._ask_city(u_id)
-                    data = self.u_vk_api.database.getCities(country_id=c_id, q=answer, count=3)['items']
-                    for n, elem in enumerate(data):
-                        self._send_msg(u_id, f"№ {n + 1}: город: {elem['title']}\n"
-                                             f"{elem.get('area', '')} {elem.get('region', '')}")
-                    n = self._city_c(u_id)
-                    return data[n-1]['id']
+    def _re_check(self, u_id):
+        if self._check_new_usr_info(u_id):
+            self.userapp_token.update_step(u_id, 1)
 
-    def _city_c(self, u_id):
-        self._send_msg(u_id, 'Выберите подходящий № города из списка и отправьте \n№ от 1 - 3')
-        for further_event in self.long_poll.listen():
-            if further_event.type == VkBotEventType.MESSAGE_NEW:
-                if u_id == further_event.obj['message']['peer_id']:
-                    answer = further_event.obj['message']['text']
-                    if answer.isdigit() and int(answer) in range(1, 4):
-                        return int(answer)
-                    self._send_msg(u_id, 'Неверно')
-                    return self._city_c(u_id)
+    def _c_dob(self, u_id, answer) -> bool:
+        if '.' in answer:
+            num = answer.split('.')
+            if len(num) == 3:
+                d, m, y = num[0], num[1], num[2]
+                if d.isdigit() and m.isdigit() and y.isdigit():
+                    if 1 <= int(d) <= 31 and 1 <= int(m) <= 12 and 1942 <= int(y) <= 2013:
+                        self.user_app.update(u_id, answer, 'dob')
+                        self._send_msg(u_id, 'я запомню вашу днюху ☺️')
+                        return True
+        self._send_msg(u_id, 'Дата указана неверено')
+        return False
 
-    def _ask_city(self, u_id):
-        self._send_msg(u_id, 'Откуда вы? (из какой страны) в формате => RU,UA,BY,UZ или '
-                             'можете скинуть флаг страны =>  🇷🇺🇺🇦🇧🇾🇺🇿')
+    def _c_city(self, u_id, country, city) -> bool:
         vk = vk_api.VkApi(token=self.userapp_token.get_user_token(u_id))
         self.u_vk_api = vk.get_api()
-        for further_event in self.long_poll.listen():
-            if further_event.type == VkBotEventType.MESSAGE_NEW:
-                if u_id == further_event.obj['message']['peer_id']:
-                    answer = further_event.obj['message']['text']
-                    c_flag = flag.dflagize(f"{answer.strip()}", subregions=True)
-                    country = self.u_vk_api.database.getCountries(code=c_flag)
-                    c_id = country['items'][0]['id']
-                    if c_id != 0:
-                        self._send_msg(u_id, f"{country['items'][0]['title']} 👍")
-                        return self._get_city_id(u_id, c_id)
-                    self._send_msg(u_id, 'Вы указали неверный формат')
-                    return self._ask_city(u_id)
+        country_flag = flag.dflagize(f"{country.strip()}", subregions=True)
+        country = self.u_vk_api.database.getCountries(code=country_flag)
+        country_id = country['items'][0]['id']
+        if country_id != 0:
+            ci = self.u_vk_api.database.getCities(country_id=country_id, q=city, count=1)['items']
+            self.user_app.update(u_id, ci[0]['id'], 'city')
+            self._send_msg(u_id, f'{country} {city} ☺️')
+            return True
+        self._send_msg(u_id, 'Страна/город указан неверено')
+        return False
 
-    def _ask_gender(self, u_id):
-        self._ask_gender_msg(u_id, 'Укажите ваш пол?')
-        for further_event in self.long_poll.listen():
-            if further_event.type == VkBotEventType.MESSAGE_NEW:
-                if u_id == further_event.obj['message']['peer_id']:
-                    answer = further_event.obj['message']['text']
-                    if answer.lower() == 'девушка':
-                        return 1
-                    elif answer.lower() == 'парень':
-                        return 2
-                    self._send_msg(u_id, 'Неверный пол (девушка / парень)')
-                    return self._ask_gender(u_id)
+    def _c_gender(self, u_id, gender) -> bool:
+        if gender.isdigit() and int(gender) in range(1, 3):
+            self.user_app.update(u_id, int(gender), 'gender')
+            return True
+        self._send_msg(u_id, 'Неверный пол')
+        return False
 
-    def _ask_relation(self, u_id):
-        self._ask_relation_msg(u_id)
-        for further_event in self.long_poll.listen():
-            if further_event.type == VkBotEventType.MESSAGE_NEW:
-                if u_id == further_event.obj['message']['peer_id']:
-                    answer = further_event.obj['message']['text']
-                    if answer.isdigit() and int(answer) in range(1, 9):
-                        return int(answer)
-                    self._send_msg(u_id, 'Семейное положение указан неверно')
-                    return self._ask_relation(u_id)
+    def _c_relation(self, u_id, relation) -> bool:
+        if relation.isdigit() and int(relation) in range(1, 9):
+            self.user_app.update(u_id, int(relation), 'relation')
+            return True
+        self._send_msg(u_id, 'Семейное положение указан неверно')
+        return False
 
     def _generate_user(self, u_id, name, usr_search_list, usr_cook, search_engine):
         if usr_search_list.check_users_existence() is None:
