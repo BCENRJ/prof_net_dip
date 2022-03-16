@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import vk_api
 import datetime as dt
-from src.vk_chat_bot.db.database import UserSearchList, session
+from src.vk_chat_bot.db.database import UserSearchList, session_to_add_to_db
 
 
 class VKinderUser:
@@ -23,7 +23,7 @@ class SearchEngine:
     def __init__(self, user_id, user_access_token):
         self.session = vk_api.VkApi(token=user_access_token)
         self.vk_api = self.session.get_api()
-        self.app_user = UserSearchList(user_id, session)
+        self.app_user = UserSearchList(user_id, session_to_add_to_db)
 
     @staticmethod
     def __em_str(value):

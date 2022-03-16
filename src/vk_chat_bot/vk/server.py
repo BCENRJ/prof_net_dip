@@ -1,6 +1,6 @@
 import requests
 from flask import Flask, request
-from src.vk_chat_bot.db.database import UserAppToken, session
+from src.vk_chat_bot.db.database import UserAppToken, session_for_server
 from src.vk_chat_bot.config import SECRET_KEY_VK_APP, URL_Oauth, REDIRECT_URI, APP_ID
 
 app = Flask(__name__)
@@ -17,7 +17,7 @@ def index():
             if response.status_code == 200:
                 user = response.json()
                 if 'access_token' in user:
-                    tmp = UserAppToken(session)
+                    tmp = UserAppToken(session_for_server)
                     tmp.add_user(user['user_id'], user['access_token'])
                     return '<h2>Успешно, вернитесь к боту Vkinders и напишите еще раз start</h2>'
             elif response.status_code == 401:

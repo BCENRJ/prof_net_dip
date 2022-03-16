@@ -499,6 +499,8 @@ class UserBlackList:
 
 dc = DatabaseControl(USERNAME, PASSWORD, HOST, PORT, DB_NAME)
 session = dc.get_session
+session_to_add_to_db = dc.get_session
+session_for_server = dc.get_session
 
 
 if __name__ == '__main__':

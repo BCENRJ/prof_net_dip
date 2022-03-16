@@ -1,15 +1,19 @@
 import vk_api
 import datetime as dt
 import flag
-from vk_api.bot_longpoll import VkBotLongPoll
+from multiprocessing import Queue
+from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 from vk_api.utils import get_random_id
 from src.vk_chat_bot.db.database import UserAppToken, UserSearchList, UserApp, session
 from src.vk_chat_bot.vk.vkontakte import SearchEngine, VKinderUser, VkUserCook
 
 
+QUEUE = Queue(100)
+
+
 class VKGroupManage:
-    COMMANDS = {'start', 'начать', 'search', 'поиск', 'next', 'следующий', 'доб. в избранное', 'доб. в чс',
+    COMMANDS = {'start', 'начать', 'search', 'свайп вправо', 'доб. в избранное', 'доб. в чс',
                 'ну...давай позже 😔', 'а давай познакомимся 🐼'}
 
     def __init__(self, vk_group_token, group_id, oauth_link):
@@ -24,7 +28,7 @@ class VKGroupManage:
     def _get_firstname(self, user_id):
         return self.vk_api.users.get(user_ids=user_id)[0]['first_name']
 
-    def _search_or_next(self, user_id, user_token, user_firstname) -> None:
+    def _next(self, user_id, user_token, user_firstname) -> None:
         usr_search = UserSearchList(user_id, session)
         v_usr_cook = VkUserCook(user_token)
         s_engine = SearchEngine(user_id, user_token)
@@ -55,6 +59,11 @@ class VKGroupManage:
 
     # Messaging
     def _send_msg(self, peer_id, message) -> None:
+        self.vk_api.messages.send(peer_id=peer_id, message=message, keyboard=None,
+                                  random_id=get_random_id())
+
+    def _resend(self, peer_id, value: str):
+        message = f'Неверный формат, правильный формат: {value}'
         self.vk_api.messages.send(peer_id=peer_id, message=message, keyboard=None,
                                   random_id=get_random_id())
 
@@ -100,7 +109,7 @@ class VKGroupManage:
 
     def _ask_to_move_msg(self, peer_id) -> None:
         keyboard = VkKeyboard(one_time=True)
-        keyboard.add_button('следующий', color=VkKeyboardColor.SECONDARY)
+        keyboard.add_button('свайп вправо', color=VkKeyboardColor.SECONDARY)
         keyboard.add_line()
         keyboard.add_button('доб. в избранное', color=VkKeyboardColor.POSITIVE)
         keyboard.add_line()
@@ -140,9 +149,12 @@ class VKGroupManage:
         self._ask_to_move_msg(u_id)
         return True
 
-    def _re_check(self, u_id):
+    def _re_check(self, u_id, u_token):
         if self._check_new_usr_info(u_id):
             self.userapp_token.update_step(u_id, 1)
+            QUEUE.put((self._search_users, (u_id, u_token)))
+            return True
+        return False
 
     def _c_dob(self, u_id, answer) -> bool:
         if '.' in answer:
@@ -185,13 +197,15 @@ class VKGroupManage:
         self._send_msg(u_id, 'Семейное положение указан неверно')
         return False
 
-    def _generate_user(self, u_id, name, usr_search_list, usr_cook, search_engine):
-        if usr_search_list.check_users_existence() is None:
-            self._send_msg(u_id, f'{name}, ищем потенциально '
-                                 f'подходящих пользователей для знакомств...')
+    def _search_users(self, u_id, user_token):
+        usr_search = UserSearchList(u_id, session)
+        s_engine = SearchEngine(u_id, user_token)
+        if usr_search.check_users_existence() is None:
             usr = self.user_app.get_user(u_id)
-            search_engine.search_users_n_add_to_db(age=dt.datetime.now().year - usr.dob.year,
-                                                   gender=usr.gender, city=usr.city, relation=usr.relation)
+            s_engine.search_users_n_add_to_db(age=dt.datetime.now().year - usr.dob.year,
+                                              gender=usr.gender, city=usr.city, relation=usr.relation)
+
+    def _generate_user(self, u_id, name, usr_search_list, usr_cook, search_engine):
         if usr_search_list.check_users_existence() is None:
             self._send_msg(u_id, f'{name}, подходящих пользователей не найдено... вернитесь чуть позже😓')
             return None
@@ -204,6 +218,81 @@ class VKGroupManage:
         self.vk_api.messages.send(peer_id=u_id, message=f'[id{r_usr.vk_usr_id}|{r_usr.firstname} {r_usr.lastname}]',
                                   attachment=attach, random_id=get_random_id())
         return r_usr.vk_usr_id
+
+
+class VKLaunchGroup(VKGroupManage):
+    def start(self):
+        for event in self.long_poll.listen():
+            if event.type == VkBotEventType.MESSAGE_NEW:
+                user_id = event.obj['message']['peer_id']
+                user_firstname = self._get_firstname(user_id)
+                text_msg = event.obj['message']['text'].strip().lower()
+                print(f"New msg from {user_id}, text: {text_msg} ")
+
+                if text_msg not in VKLaunchGroup.COMMANDS and \
+                        text_msg.split()[0] not in {'/dob', '/from', '/gender', '/re'}:
+                    self._unknown_command(user_id, text_msg)
+                else:
+                    user_exist = self.userapp_token.check_user(user_id)
+                    user_token = self.userapp_token.get_user_token(user_id)
+                    step = self.userapp_token.get_step(user_id)
+                    start = text_msg in {'start', 'начать'}
+                    next_ = text_msg in {'next', 'свайп вправо'}
+
+                    if start and user_exist is False:
+                        self._send_msg_sign_up(user_id, user_firstname)
+
+                    elif step == 0 and user_exist:
+                        if start:
+                            self._send_msg_signed_in(user_id, user_firstname)
+                        elif text_msg == 'ну...давай позже 😔':
+                            self._send_bye(user_id, user_firstname)
+                        elif text_msg == 'а давай познакомимся 🐼':
+                            self._get_acquaintance(user_token)
+                            self._re_check(user_id, user_token)
+                        elif text_msg.split()[0] == '/dob':
+                            txt_c = len(text_msg.split()) == 2
+                            if txt_c:
+                                self._c_dob(user_id, text_msg.split()[1])
+                                self._re_check(user_id, user_token)
+                            else:
+                                self._resend(user_id, '/dob D.M.YYYY')
+                        elif text_msg.split()[0] == '/from':
+                            txt_c = len(text_msg.split()) == 3
+                            if txt_c:
+                                self._c_city(user_id, text_msg.split()[1], text_msg.split()[2])
+                                self._re_check(user_id, user_token)
+                        elif text_msg.split()[0] == '/gender':
+                            txt_c = len(text_msg.split()) == 2
+                            if txt_c:
+                                self._c_gender(user_id, text_msg.split()[1])
+                                self._re_check(user_id, user_token)
+                            else:
+                                self._resend(user_id, '/gender 1 или /gender 2')
+                        elif text_msg.split()[0] == '/re':
+                            txt_c = len(text_msg.split()) == 2
+                            if txt_c:
+                                self._c_relation(user_id, text_msg.split()[1])
+                                self._re_check(user_id, user_token)
+                            else:
+                                self._resend(user_id, '/re 1-6')
+                    elif step == 1 and user_exist:
+                        if start:
+                            self._send_msg(user_id, 'приветствую, нажмите на кнопки снизу 🐼')
+                            self._ask_to_move_msg(user_id)
+                        elif next_:
+                            self._next(user_id, user_token, user_firstname)
+                            self._ask_to_move_msg(user_id)
+                        elif text_msg == 'доб. в избранное':
+                            self._move_to_fav(user_id)
+                            self._send_msg(user_id, 'пользователь добавлен в избраный список ⭐\n'
+                                                    'идет следующий поиск...️')
+                            self._next(user_id, user_token, user_firstname)
+                        elif text_msg == 'доб. в чс':
+                            self._move_to_black(user_id)
+                            self._send_msg(user_id, 'пользователь добавлен в черный список 🌚\n'
+                                                    'идет следующий поиск...')
+                            self._next(user_id, user_token, user_firstname)
 
 
 if __name__ == '__main__':
