@@ -1,7 +1,8 @@
+import threading
 import vk_api
 import datetime as dt
 import flag
-from multiprocessing import Queue
+from queue import Queue
 from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 from vk_api.utils import get_random_id
@@ -9,10 +10,9 @@ from src.vk_chat_bot.db.database import UserAppToken, UserSearchList, UserApp, s
 from src.vk_chat_bot.vk.vkontakte import SearchEngine, VKinderUser, VkUserCook
 
 
-QUEUE = Queue(100)
-
-
 class VKGroupManage:
+    QUEUE = Queue()
+
     COMMANDS = {'start', 'начать', 'search', 'свайп вправо', 'доб. в избранное', 'доб. в чс',
                 'ну...давай позже 😔', 'а давай познакомимся 🐼'}
 
@@ -152,7 +152,10 @@ class VKGroupManage:
     def _re_check(self, u_id, u_token):
         if self._check_new_usr_info(u_id):
             self.userapp_token.update_step(u_id, 1)
-            QUEUE.put((self._search_users, (u_id, u_token)))
+            t = threading.Thread(target=self._search_users, args=(u_id, u_token), daemon=True)
+            VKGroupManage.QUEUE.put(t)
+            while not VKGroupManage.QUEUE.empty():
+                VKGroupManage.QUEUE.get().start()
             return True
         return False
 

@@ -504,6 +504,6 @@ session_for_server = dc.get_session
 
 
 if __name__ == '__main__':
-    Base.metadata.create_all(dc.get_engine)
     # Base.metadata.drop_all(dc.get_engine)
+    Base.metadata.create_all(dc.get_engine)
     pass
